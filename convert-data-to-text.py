@@ -4,22 +4,38 @@ import zipfile
 import os
 from google.colab import files
 
+def convert_to_serializable(obj):
+    if isinstance(obj, (pd.Timestamp, pd._libs.tslibs.timestamps.Timestamp)):
+        return obj.isoformat()
+    elif isinstance(obj, pd.Series):
+        return obj.tolist()
+    elif isinstance(obj, pd.DataFrame):
+        return obj.to_dict()
+    else:
+        return str(obj)
+
 def xlsx_to_structured_text(xlsx_file, output_text_file):
     # Read the Excel file
     xls = pd.ExcelFile(xlsx_file)
 
-    # Dictionary to hold all sheets data
-    structured_data = {}
+    # List to hold all sheets data
+    structured_data = []
 
     # Iterate through each sheet
     for sheet_name in xls.sheet_names:
         df = pd.read_excel(xlsx_file, sheet_name=sheet_name)
         # Convert each sheet to a list of dictionaries
-        structured_data[sheet_name] = df.to_dict(orient='records')
+        sheet_data = df.applymap(convert_to_serializable).to_dict(orient='records')
+        structured_data.append({sheet_name: sheet_data})
 
-    # Write the structured data to a text file in JSON format
+    # Write the structured data to a text file in a simple key-value format
     with open(output_text_file, 'w') as file:
-        json.dump(structured_data, file, indent=4)
+        for sheet in structured_data:
+            for sheet_name, data in sheet.items():
+                file.write(f"Sheet: {sheet_name}\n")
+                for record in data:
+                    file.write(f"{json.dumps(record)}\n")
+                file.write("\n")
 
 # Upload XLSX or ZIP file
 uploaded = files.upload()
@@ -35,26 +51,10 @@ for file_name in uploaded.keys():
         xlsx_files = []
 
 output_text_file = 'output_file.txt'
-all_data = {}
+all_data = []
 
 for xlsx_file in xlsx_files:
-    # Read the Excel file
-    xls = pd.ExcelFile(xlsx_file)
-
-    # Dictionary to hold all sheets data for this file
-    structured_data = {}
-
-    # Iterate through each sheet
-    for sheet_name in xls.sheet_names:
-        df = pd.read_excel(xlsx_file, sheet_name=sheet_name)
-        # Convert each sheet to a list of dictionaries
-        structured_data[sheet_name] = df.to_dict(orient='records')
-    
-    all_data[xlsx_file] = structured_data
-
-# Write the structured data to a text file in JSON format
-with open(output_text_file, 'w') as file:
-    json.dump(all_data, file, indent=4)
+    xlsx_to_structured_text(xlsx_file, output_text_file)
 
 # Download the output file
 files.download(output_text_file)
